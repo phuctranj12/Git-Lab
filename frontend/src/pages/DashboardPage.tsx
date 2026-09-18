@@ -23,7 +23,7 @@ export default function DashboardPage() {
             <Typography.Text strong>Cấu hình pip một lần — mọi package (nội bộ + PyPI) đi qua một index duy nhất:</Typography.Text>
             <CopyCommand value={`pip config set global.index-url ${meta.package_index_url}`} />
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              Registry cần token scope <code>read_package</code> — tạo ở <Link to="/settings">SSH key & token</Link>.
+              Cần có token tải thư viện — tạo ở <Link to="/settings#token">Cài đặt truy cập</Link>.
             </Typography.Text>
           </Space>
         </Card>

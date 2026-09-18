@@ -25,10 +25,11 @@ export default function OverviewTab({ project: p }: { project: Project }) {
               size="small"
               items={[
                 {
-                  title: 'Thêm SSH public key',
+                  title: 'Cài khóa truy cập Git cho máy của bạn',
                   description: (
                     <span>
-                      Vào <Link to="/settings">SSH key & token</Link>, dán nội dung <code>~/.ssh/id_ed25519.pub</code>.
+                      Làm một lần trên mỗi máy, theo hướng dẫn ở{' '}
+                      <Link to="/settings#git-key">Cài đặt truy cập → Khóa truy cập Git</Link>.
                     </span>
                   ),
                 },

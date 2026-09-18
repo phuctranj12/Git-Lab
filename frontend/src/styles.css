@@ -218,9 +218,166 @@ pre,
   font-size: 26px;
 }
 
+.access-page {
+  max-width: 1080px;
+}
+
+.access-section {
+  scroll-margin-top: 80px;
+}
+
+.access-section-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.access-section-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.access-section-extra {
+  flex-shrink: 0;
+}
+
+.access-icon,
+.task-icon {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: #e8f0fa;
+  color: var(--brand-2);
+  font-size: 20px;
+}
+
+.task-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.task-card {
+  display: flex;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  color: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.task-card:hover {
+  color: inherit;
+  border-color: var(--brand-2);
+  box-shadow: 0 4px 14px rgba(30, 58, 95, 0.1);
+}
+
+.task-card:focus-visible {
+  outline: 2px solid var(--brand-2);
+  outline-offset: 2px;
+}
+
+.task-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.task-title {
+  font-weight: 600;
+  font-size: 15px;
+  color: #1f2937;
+}
+
+.task-desc {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #595959;
+  margin-top: 2px;
+}
+
+.field-block {
+  margin-bottom: 16px;
+}
+
+.field-block .copy-command,
+.setup-steps .copy-command,
+.access-page .ant-space-item > div > .copy-command {
+  margin-top: 6px;
+}
+
+.setup-steps .ant-steps-item-description {
+  max-width: none !important;
+  padding-bottom: 18px !important;
+}
+
+.setup-steps .ant-steps-item-title {
+  font-weight: 600;
+  color: #1f2937 !important;
+}
+
+.setup-steps .ant-steps-item-icon {
+  background: #e8f0fa !important;
+  border-color: #e8f0fa !important;
+}
+
+.setup-steps .ant-steps-icon {
+  color: var(--brand-2) !important;
+  font-weight: 600;
+}
+
+.key-form,
+.password-form {
+  max-width: 560px;
+}
+
+.key-form {
+  margin-top: 10px;
+}
+
+.col-hint {
+  white-space: nowrap;
+  cursor: help;
+}
+
+.col-hint .anticon {
+  color: #8c8c8c;
+  font-size: 12px;
+}
+
+.row-muted td {
+  opacity: 0.55;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .task-card,
+  .tool-card {
+    transition: none;
+  }
+}
+
 @media (max-width: 768px) {
   .app-content {
     padding: 16px;
+  }
+  .access-section-head {
+    flex-wrap: wrap;
+  }
+  .access-section-text {
+    flex-basis: 100%;
+  }
+  .access-section-head > .access-icon {
+    display: none;
+  }
+  .access-section-extra {
+    width: 100%;
   }
   .hide-mobile {
     display: none !important;

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { Avatar, Button, Dropdown, Layout, Menu, Space, Typography } from 'antd'
+import { Avatar, Button, Dropdown, Layout, Menu, Space, Tooltip, Typography } from 'antd'
 import {
   AppstoreOutlined,
   AuditOutlined,
@@ -32,7 +32,7 @@ export default function AppLayout() {
       { key: '/packages', icon: <InboxOutlined />, label: <Link to="/packages">Package</Link> },
       { key: '/builds', icon: <BuildOutlined />, label: <Link to="/builds">Build</Link> },
       { key: '/groups', icon: <TeamOutlined />, label: <Link to="/groups">Group</Link> },
-      { key: '/settings', icon: <KeyOutlined />, label: <Link to="/settings">SSH key & token</Link> },
+      { key: '/settings', icon: <KeyOutlined />, label: <Link to="/settings">Cài đặt truy cập</Link> },
     ]
     if (user?.is_system_admin) {
       main.push(
@@ -96,14 +96,16 @@ export default function AppLayout() {
           <Button type="text" icon={<MenuOutlined />} onClick={() => setCollapsed(!collapsed)} aria-label="Menu" />
           <Space size="middle">
             {meta && (
-              <Typography.Text type="secondary" className="hide-mobile">
-                Index: <code>{meta.package_index_url}</code>
-              </Typography.Text>
+              <Tooltip title="Địa chỉ pip dùng để tìm thư viện của công ty">
+                <Typography.Text type="secondary" className="hide-mobile">
+                  Kho thư viện: <code>{meta.package_index_url}</code>
+                </Typography.Text>
+              </Tooltip>
             )}
             <Dropdown
               menu={{
                 items: [
-                  { key: 'settings', icon: <KeyOutlined />, label: 'SSH key & token', onClick: () => navigate('/settings') },
+                  { key: 'settings', icon: <KeyOutlined />, label: 'Cài đặt truy cập', onClick: () => navigate('/settings') },
                   { type: 'divider' },
                   {
                     key: 'logout',

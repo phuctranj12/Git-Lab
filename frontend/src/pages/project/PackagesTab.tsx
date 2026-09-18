@@ -20,7 +20,7 @@ export default function PackagesTab({ project: p }: { project: Project }) {
             </Typography.Text>
             <CopyCommand value={`pip config set global.index-url ${index}`} />
             <Typography.Text>
-              2. Lưu token cá nhân (scope <code>read_package</code>, tạo ở <Link to="/settings">SSH key & token</Link>) vào{' '}
+              2. Lưu token tải thư viện (tạo ở <Link to="/settings#token">Cài đặt truy cập</Link>) vào{' '}
               <code>~/.netrc</code> (Windows: <code>%USERPROFILE%\_netrc</code>) — không ghi token vào requirements.txt:
             </Typography.Text>
             <CopyCommand value={`machine ${host} login __token__ password <TOKEN_CỦA_BẠN>`} />
