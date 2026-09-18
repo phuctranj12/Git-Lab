@@ -1,0 +1,10 @@
+* text=auto
+*.sh text eol=lf
+git-service/bin/* text eol=lf
+git-service/hooks/* text eol=lf
+worker/entrypoint.sh text eol=lf
+deploy/scripts/* text eol=lf
+scripts/*.sh text eol=lf
+Makefile text eol=lf
+*.png binary
+*.ico binary

@@ -1,0 +1,13 @@
+#!/bin/sh
+# Tạo bare repo thủ công (bình thường backend tự tạo khi tạo project qua API/UI).
+# Dùng: create-repository <group>/<project> <project-uuid> [default-branch]
+set -eu
+REL="$1"; PID="$2"; BRANCH="${3:-main}"
+ROOT="${GIT_REPOSITORY_ROOT:-/data/git/repositories}"
+DEST="$ROOT/$REL.git"
+[ -e "$DEST" ] && { echo "Đã tồn tại: $DEST" >&2; exit 1; }
+mkdir -p "$(dirname "$DEST")"
+git init --bare --quiet --initial-branch="$BRANCH" "$DEST"
+git --git-dir="$DEST" config toolhub.projectid "$PID"
+/opt/toolhub/bin/install-hook "$DEST"
+echo "$DEST"

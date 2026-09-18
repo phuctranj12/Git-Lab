@@ -1,0 +1,51 @@
+#!/usr/bin/python3
+"""Chỉ GỬI EVENT, không build (spec 11). Timeout ngắn; API lỗi → ghi spool để gửi lại, không làm hỏng push."""
+import json
+import os
+import subprocess
+import sys
+import uuid
+
+sys.path.insert(0, "/opt/toolhub/lib")
+from toolhub_common import api, err, load_env  # noqa: E402
+
+
+def main() -> int:
+    updates = []
+    for line in sys.stdin:
+        parts = line.split()
+        if len(parts) == 3:
+            updates.append({"old_sha": parts[0], "new_sha": parts[1], "ref": parts[2]})
+    if not updates:
+        return 0
+    git_dir = os.path.abspath(os.environ.get("GIT_DIR", "."))
+    project_id = os.environ.get("TOOLHUB_PROJECT_ID") or subprocess.run(
+        ["git", "config", "toolhub.projectid"], capture_output=True, text=True).stdout.strip() or None
+    root = "/data/git/repositories"
+    rel = os.path.relpath(git_dir, root) if git_dir.startswith(root) else git_dir
+    event = {"event_id": str(uuid.uuid4()), "project_id": project_id, "repository_path": rel,
+             "user_id": os.environ.get("TOOLHUB_USER_ID") or None, "updates": updates}
+    try:
+        status, data = api("POST", "/git/events", event, timeout=4)
+    except OSError as exc:
+        status, data = 0, {"error": str(exc)}
+    if status == 200:
+        for b in data.get("builds", []):
+            kind = "Release build" if b["trigger"] == "TAG" else "Validation build"
+            err(f"HAWEE Tool Hub: {kind} #{b['number']} đã xếp hàng cho {b['ref']}")
+        return 0
+    spool = load_env().get("TOOLHUB_SPOOL_DIR", "/var/spool/toolhub")
+    try:
+        os.makedirs(spool, exist_ok=True)
+        tmp = os.path.join(spool, f".{event['event_id']}.tmp")
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(event, fh)
+        os.replace(tmp, os.path.join(spool, f"{event['event_id']}.json"))
+        err("HAWEE Tool Hub: tạm chưa báo được sự kiện push — đã lưu hàng đợi, sẽ tự gửi lại.")
+    except OSError as exc:
+        err(f"HAWEE Tool Hub: KHÔNG lưu được event push ({exc}). Liên hệ quản trị viên.")
+    return 0  # push đã thành công; không bao giờ báo lỗi ở post-receive
+
+
+if __name__ == "__main__":
+    sys.exit(main())

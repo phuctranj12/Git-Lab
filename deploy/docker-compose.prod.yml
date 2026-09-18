@@ -1,0 +1,25 @@
+# Override production: HTTPS bằng cert IT cấp, không publish port 8081 ra ngoài, cookie Secure.
+#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.prod.yml --env-file deploy/.env up -d --build
+services:
+  backend:
+    environment:
+      APP_ENV: production
+      COOKIE_SECURE: "true"
+
+  migrate:
+    environment:
+      APP_ENV: production
+
+  web:
+    ports: !override
+      - "80:80"
+      - "443:443"
+    environment:
+      TOOLS_HOST: ${TOOLS_HOST:-tools.hawee.local}
+      PACKAGES_HOST: ${PACKAGES_HOST:-packages.hawee.local}
+    volumes: !override
+      - ../nginx/prod:/etc/nginx/templates:ro
+      - ${CERTS_DIR:-../certs}:/etc/nginx/certs:ro
+
+# git-service giữ GIT_SSH_PORT (mặc định 2222) vì cổng 22 của host thường là OpenSSH quản trị.
+# Muốn clone dạng git@git.hawee.local:group/x.git (cổng 22) → dùng IP/DNS riêng hoặc dời sshd host sang cổng khác.

@@ -1,0 +1,43 @@
+# ── Bí mật (BẮT BUỘC) ──
+.env
+.env.*
+!.env.example
+certs/*
+!certs/.gitkeep
+*.key
+*.p12
+*.pfx
+*_private.pem
+id_rsa
+id_ed25519
+
+# ── IDE / OS ──
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.coverage
+htmlcov/
+coverage.xml
+
+# ── Node / Vite ──
+node_modules/
+dist/
+.vite/
+*.local
+npm-debug.log*
+
+# ── Runtime data (local dev) ──
+/data/
+/backups/
+/.e2e/

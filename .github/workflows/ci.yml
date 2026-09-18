@@ -1,0 +1,55 @@
+name: CI - Test
+
+on: [push, pull_request]
+
+jobs:
+  repo-hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/check_repo.sh .
+
+  backend-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_USER: toolhub, POSTGRES_PASSWORD: toolhub, POSTGRES_DB: toolhub_test }
+        ports: ["55432:5432"]
+        options: --health-cmd "pg_isready -U toolhub" --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7.4-alpine
+        ports: ["56379:6379"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: MinIO
+        run: |
+          docker run -d --name minio -p 59000:9000 -e MINIO_ROOT_USER=toolhub -e MINIO_ROOT_PASSWORD=toolhub-secret \
+            quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z server /data
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:59000/minio/health/ready && break; sleep 2; done
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: pip install
+        working-directory: backend
+        run: pip install -r requirements-dev.txt
+      - name: pytest
+        working-directory: backend
+        run: pytest --cov=app --cov-report=term-missing:skip-covered
+
+  worker-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - working-directory: worker
+        run: pip install -r requirements-dev.txt && pytest
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - working-directory: frontend
+        run: npm ci && npm run typecheck && npm run build

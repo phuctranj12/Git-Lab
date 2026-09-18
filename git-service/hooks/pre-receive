@@ -1,0 +1,41 @@
+#!/usr/bin/python3
+"""Kiểm tra quyền theo TỪNG ref trước khi nhận push (tag cần Maintainer, nhánh mặc định có thể bảo vệ,
+tag đã publish là bất biến). API không trả lời → TỪ CHỐI push (fail-closed, repo không đổi gì)."""
+import os
+import sys
+
+sys.path.insert(0, "/opt/toolhub/lib")
+from toolhub_common import api, err  # noqa: E402
+
+
+def main() -> int:
+    user_id = os.environ.get("TOOLHUB_USER_ID")
+    project_id = os.environ.get("TOOLHUB_PROJECT_ID")
+    if not user_id or not project_id:
+        err("HAWEE Tool Hub: push chỉ được phép qua SSH đã xác thực")
+        return 1
+    updates = []
+    for line in sys.stdin:
+        parts = line.split()
+        if len(parts) == 3:
+            updates.append({"old_sha": parts[0], "new_sha": parts[1], "ref": parts[2]})
+    if not updates:
+        return 0
+    try:
+        status, data = api("POST", "/git/authorize-push",
+                           {"user_id": user_id, "project_id": project_id, "updates": updates}, timeout=10)
+    except OSError:
+        err("HAWEE Tool Hub: không kiểm tra được quyền push (API không phản hồi) — thử lại sau")
+        return 1
+    if status != 200 or not data.get("allowed"):
+        err("HAWEE Tool Hub: push bị từ chối")
+        for d in data.get("denied", []):
+            err(f"  ✗ {d['ref']}: {d['reason']}")
+        if not data.get("denied"):
+            err(f"  {data.get('message') or data.get('error', {}).get('message', 'lỗi không xác định')}")
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

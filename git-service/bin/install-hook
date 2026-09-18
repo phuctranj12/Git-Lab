@@ -1,0 +1,11 @@
+#!/bin/sh
+# Trỏ repo tới hook trung tâm (/opt/toolhub/hooks). Không tham số → áp cho mọi repo.
+set -eu
+ROOT="${GIT_REPOSITORY_ROOT:-/data/git/repositories}"
+apply() {
+    git --git-dir="$1" config core.hooksPath /opt/toolhub/hooks
+    git --git-dir="$1" config receive.fsckObjects true
+    echo "hook OK: $1"
+}
+if [ $# -ge 1 ]; then apply "$1"; exit 0; fi
+find "$ROOT" -mindepth 2 -maxdepth 2 -type d -name '*.git' | while read -r repo; do apply "$repo"; done

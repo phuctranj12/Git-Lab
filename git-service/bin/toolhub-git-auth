@@ -1,0 +1,73 @@
+#!/usr/bin/python3
+"""Forced command cho mọi kết nối SSH của user `git` (spec 9.2).
+
+1. xác định key/user từ key_id (tham số do toolhub-keys gắn);
+2. đọc SSH_ORIGINAL_COMMAND;
+3. CHỈ cho git-upload-pack / git-receive-pack;
+4. parse đường dẫn repository;
+5. hỏi API quyền đọc/ghi;
+6. hợp lệ → exec git; không → exit khác 0. Không bao giờ mở shell tương tác.
+"""
+import os
+import re
+import shlex
+import sys
+
+sys.path.insert(0, "/opt/toolhub/lib")
+from toolhub_common import api, err  # noqa: E402
+
+ALLOWED = {"git-upload-pack": "read", "git-receive-pack": "write"}
+REPO_RE = re.compile(r"^/?[a-z0-9][a-z0-9-]{0,99}/[a-z0-9][a-z0-9-]{0,99}(\.git)?/?$")
+KEY_RE = re.compile(r"^[0-9a-f-]{36}$")
+
+
+def deny(msg: str) -> int:
+    err(f"\nHAWEE Tool Hub: {msg}\n")
+    return 1
+
+
+def main() -> int:
+    if len(sys.argv) != 2 or not KEY_RE.match(sys.argv[1]):
+        return deny("cấu hình key không hợp lệ")
+    key_id = sys.argv[1]
+    original = os.environ.get("SSH_ORIGINAL_COMMAND", "").strip()
+    if not original:
+        # `ssh -T git@host` để kiểm tra key: xác thực đã thành công nhưng không bao giờ cấp shell.
+        err("\nHAWEE Tool Hub: xác thực SSH thành công ✓ — không cung cấp shell, hãy dùng git clone/pull/push.\n")
+        return 1
+    try:
+        parts = shlex.split(original)
+    except ValueError:
+        return deny("lệnh không hợp lệ")
+    # "git upload-pack 'x'" (cú pháp cũ) → "git-upload-pack 'x'"
+    if len(parts) == 3 and parts[0] == "git" and parts[1] in ("upload-pack", "receive-pack"):
+        parts = ["git-" + parts[1], parts[2]]
+    if len(parts) != 2 or parts[0] not in ALLOWED:
+        return deny("chỉ cho phép git clone/fetch/pull/push")
+    command, repo = parts
+    if not REPO_RE.match(repo):
+        return deny(f"đường dẫn repository không hợp lệ: {repo}")
+    try:
+        status, data = api("POST", "/git/authorize", {"key_id": key_id, "action": ALLOWED[command],
+                                                      "repository": repo}, timeout=10)
+    except OSError:
+        return deny("không kết nối được Tool Hub API, thử lại sau")
+    if status != 200 or not data.get("allowed"):
+        return deny(data.get("message") or "không có quyền truy cập repository")
+    path = data["repo_path"]
+    if not os.path.isdir(path):
+        return deny("repository chưa được khởi tạo trên server")
+    env = {k: v for k, v in os.environ.items() if k in ("PATH", "HOME", "LANG", "LC_ALL", "SSH_CONNECTION")}
+    env.update({
+        "TOOLHUB_USER_ID": str(data.get("user_id") or ""),
+        "TOOLHUB_USERNAME": str(data.get("username") or ""),
+        "TOOLHUB_PROJECT_ID": str(data.get("project_id") or ""),
+        "TOOLHUB_KEY_ID": key_id,
+        "GIT_CONFIG_NOSYSTEM": "1",
+    })
+    os.execve("/usr/bin/" + command, [command, path], env)
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

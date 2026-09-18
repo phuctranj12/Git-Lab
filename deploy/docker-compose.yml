@@ -1,0 +1,208 @@
+# HAWEE Tool Hub — staging / một server (spec mục 32, 44).
+#   make dev            (= docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build)
+# Production: thêm -f deploy/docker-compose.prod.yml (TLS, không publish port phụ).
+name: toolhub
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "20m", max-file: "5" }
+
+x-backend-env: &backend-env
+  APP_ENV: ${APP_ENV:-staging}
+  APP_NAME: ${APP_NAME:-HAWEE Tool Hub}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  WEB_BASE_URL: ${WEB_BASE_URL}
+  PACKAGE_BASE_URL: ${PACKAGE_BASE_URL}
+  GIT_SSH_HOST: ${GIT_SSH_HOST}
+  GIT_SSH_PORT: ${GIT_SSH_PORT:-2222}
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-toolhub}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-toolhub}
+  REDIS_URL: redis://redis:6379/0
+  JWT_SECRET: ${JWT_SECRET}
+  INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET}
+  RUNNER_TOKEN: ${RUNNER_TOKEN}
+  COOKIE_SECURE: ${COOKIE_SECURE:-false}
+  CORS_ORIGINS: ${CORS_ORIGINS:-}
+  MINIO_ENDPOINT: minio:9000
+  MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+  MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+  MINIO_SECURE: "false"
+  MINIO_BUCKET_PACKAGES: ${MINIO_BUCKET_PACKAGES:-toolhub-packages}
+  MINIO_BUCKET_LOGS: ${MINIO_BUCKET_LOGS:-toolhub-build-logs}
+  MINIO_BUCKET_ARTIFACTS: ${MINIO_BUCKET_ARTIFACTS:-toolhub-artifacts}
+  MINIO_BUCKET_BACKUPS: ${MINIO_BUCKET_BACKUPS:-toolhub-backups}
+  GIT_REPOSITORY_ROOT: /data/git/repositories
+  INTERNAL_PACKAGE_PREFIX: ${INTERNAL_PACKAGE_PREFIX:-hawee-}
+  PYPI_UPSTREAM_SIMPLE_URL: ${PYPI_UPSTREAM_SIMPLE_URL:-https://pypi.org/simple}
+  PYPI_UPSTREAM_FILE_HOSTS: ${PYPI_UPSTREAM_FILE_HOSTS:-files.pythonhosted.org}
+  PYPI_METADATA_TTL_SECONDS: ${PYPI_METADATA_TTL_SECONDS:-900}
+  REGISTRY_ALLOW_ANONYMOUS: ${REGISTRY_ALLOW_ANONYMOUS:-false}
+  BUILD_TIMEOUT_SECONDS: ${BUILD_TIMEOUT_SECONDS:-900}
+  BUILD_MEMORY_LIMIT: ${BUILD_MEMORY_LIMIT:-4g}
+  BUILD_CPU_LIMIT: ${BUILD_CPU_LIMIT:-2}
+  BUILD_MAX_CONCURRENCY: ${BUILD_MAX_CONCURRENCY:-2}
+  PACKAGE_MAX_UPLOAD_MB: ${PACKAGE_MAX_UPLOAD_MB:-500}
+  LOGIN_RATE_LIMIT_PER_MINUTE: ${LOGIN_RATE_LIMIT_PER_MINUTE:-5}
+  API_RATE_LIMIT_PER_MINUTE: ${API_RATE_LIMIT_PER_MINUTE:-600}
+  REGISTRY_RATE_LIMIT_PER_MINUTE: ${REGISTRY_RATE_LIMIT_PER_MINUTE:-6000}
+  FIRST_ADMIN_USERNAME: ${FIRST_ADMIN_USERNAME:-admin}
+  FIRST_ADMIN_EMAIL: ${FIRST_ADMIN_EMAIL:-admin@hawee.local}
+  FIRST_ADMIN_PASSWORD: ${FIRST_ADMIN_PASSWORD:-}
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-toolhub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD chưa đặt}
+      POSTGRES_DB: ${POSTGRES_DB:-toolhub}
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    logging: *logging
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [redis_data:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    logging: *logging
+
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY chưa đặt}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY chưa đặt}
+    volumes: [minio_data:/data]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    logging: *logging
+
+  # One-shot: migrate DB + bucket + admin + runner token + kiểm tra git storage (idempotent, spec 35).
+  migrate:
+    build: ../backend
+    image: toolhub-backend:${TOOLHUB_TAG:-1.0.0}
+    command: ["python", "-m", "app.cli", "bootstrap"]
+    environment: *backend-env
+    volumes: [git_repositories:/data/git/repositories]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      minio: { condition: service_healthy }
+    restart: "no"
+    logging: *logging
+
+  backend:
+    image: toolhub-backend:${TOOLHUB_TAG:-1.0.0}
+    restart: unless-stopped
+    environment:
+      <<: *backend-env
+      UVICORN_WORKERS: ${UVICORN_WORKERS:-1}
+    volumes: [git_repositories:/data/git/repositories]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=4).status == 200 else 1)"]
+      interval: 10s
+      timeout: 6s
+      retries: 10
+      start_period: 15s
+    logging: *logging
+
+  # Image cho container build tạm — chỉ để `up --build` build sẵn, không chạy thường trực.
+  builder:
+    build: ../worker/builder
+    image: ${BUILDER_IMAGE:-toolhub-builder:1.0.0}
+    entrypoint: ["true"]
+    restart: "no"
+    network_mode: none
+
+  worker:
+    build: ../worker
+    image: toolhub-worker:${TOOLHUB_TAG:-1.0.0}
+    restart: unless-stopped
+    environment:
+      API_BASE_URL: http://backend:8000
+      RUNNER_TOKEN: ${RUNNER_TOKEN}
+      RUNNER_NAME: ${RUNNER_NAME:-runner-1}
+      REDIS_URL: redis://redis:6379/0
+      BUILD_MAX_CONCURRENCY: ${BUILD_MAX_CONCURRENCY:-2}
+      BUILDER_IMAGE: ${BUILDER_IMAGE:-toolhub-builder:1.0.0}
+      BUILD_NETWORK: toolhub-build
+      BUILD_REGISTRY_URL: http://registry:8081/simple
+      BUILD_STORAGE_SIZE: ${BUILD_STORAGE_SIZE:-}
+      RUN_BEAT: "true"
+    volumes:
+      # Worker là thành phần tin cậy điều khiển container build; container BUILD không bao giờ thấy socket.
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      backend: { condition: service_healthy }
+      builder: { condition: service_completed_successfully }
+    logging: *logging
+
+  git-service:
+    build: ../git-service
+    image: toolhub-git-service:${TOOLHUB_TAG:-1.0.0}
+    restart: unless-stopped
+    environment:
+      TOOLHUB_API_URL: http://backend:8000
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET}
+    ports: ["${GIT_SSH_BIND:-0.0.0.0}:${GIT_SSH_PORT:-2222}:22"]
+    volumes:
+      - git_repositories:/data/git/repositories
+      - git_ssh:/data/ssh
+      - git_spool:/var/spool/toolhub
+    depends_on:
+      backend: { condition: service_healthy }
+    logging: *logging
+
+  # Nginx: React SPA + reverse proxy /api (tools) và /simple,/packages (registry).
+  web:
+    build: ../frontend
+    image: toolhub-web:${TOOLHUB_TAG:-1.0.0}
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-8080}:80"
+      - "${PACKAGES_PORT:-8081}:8081"
+    volumes:
+      - ../nginx/templates:/etc/nginx/templates:ro
+    networks:
+      default: {}
+      build:
+        aliases: [registry]
+    depends_on:
+      backend: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    logging: *logging
+
+networks:
+  default: {}
+  # Mạng riêng cho container build: CHỈ tới được registry (nginx), không Internet, không DB/Redis/MinIO.
+  build:
+    name: toolhub-build
+    internal: true
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  git_repositories:
+  git_ssh:
+  git_spool:

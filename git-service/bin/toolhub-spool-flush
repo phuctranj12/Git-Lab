@@ -1,0 +1,50 @@
+#!/usr/bin/python3
+"""Gửi lại các event push bị lưu spool khi API tạm thời không sẵn sàng (chạy nền, 30s/lần)."""
+import glob
+import json
+import os
+import sys
+import time
+
+sys.path.insert(0, "/opt/toolhub/lib")
+from toolhub_common import api, err, load_env  # noqa: E402
+
+
+def flush_once(spool: str) -> int:
+    sent = 0
+    for path in sorted(glob.glob(os.path.join(spool, "*.json"))):
+        try:
+            with open(path, encoding="utf-8") as fh:
+                event = json.load(fh)
+        except (OSError, ValueError):
+            os.replace(path, path + ".bad")
+            continue
+        try:
+            status, _ = api("POST", "/git/events", event, timeout=10)
+        except OSError:
+            return sent
+        if status == 200 or status in (400, 404, 422):
+            # 200: đã nhận (event_id idempotent); 4xx: event không còn hợp lệ → bỏ để không kẹt hàng đợi
+            if status != 200:
+                err(f"spool: bỏ event {os.path.basename(path)} (HTTP {status})")
+            os.remove(path)
+            sent += 1
+        else:
+            return sent
+    return sent
+
+
+def main() -> int:
+    spool = load_env().get("TOOLHUB_SPOOL_DIR", "/var/spool/toolhub")
+    once = "--once" in sys.argv
+    while True:
+        n = flush_once(spool)
+        if n:
+            err(f"spool: đã gửi lại {n} event")
+        if once:
+            return 0
+        time.sleep(30)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
